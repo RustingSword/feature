@@ -1,0 +1,212 @@
+syntax = "proto2";
+
+// 一套完整的特征预处理框架包含两部分：
+// - 特征验证
+// - 特征转换
+// 特征验证确保输入数据满足预定义的条件，也可以做一些统计，比如打印特征分布等，
+// 监控数据是否有异常。特征转换将原始数据转换成模型需要的输入数据，常用的转换包
+// 括离散化/特征交叉/简单的相似度计算等。
+
+// Schema 定义条件，用于特征验证，Transformer 定义对特征的转换操作，具体实现放在
+// 对应的文件里。Transformer的参数都是optional的，因为大多数都需要从输入数据中统
+// 计得到，所以先过一遍数据，计算出这些需要的参数之后再设置。配置好之后的schema
+// 可以保存下来，用于线上的inference，确保特征都按照相同的方式做变换。
+
+// reference
+// https://github.com/tensorflow/metadata/blob/master/tensorflow_metadata/proto/v0/schema.proto
+enum LifecycleStage {
+  // feature in later stages can be used in earlier stages, but not vice versa
+  UNKNOWN_STAGE = 0;
+  DEPRECATED = 1;
+  DEBUG_ONLY = 2;
+  ALPHA = 3;
+  BETA = 4;
+  PRODUCTION = 5;
+}
+
+enum FeatureType {
+  INT = 0;
+  FLOAT = 1;
+  STRING = 2;
+  BYTES = 3;
+  // fixed length array
+  DENSE = 4;
+  // varying length array
+  SPARSE = 5;
+  // cross feature
+  CROSS = 6;
+  UNKNOWN_TYPE = 7;
+}
+
+enum ValidatePhase {
+  // before transformation
+  BEFORE_TRANSFORM = 0;
+  // after transformation
+  AFTER_TRANSFORM = 1;
+  // before and after transformation
+  BEFORE_AND_AFTER_TRANSFORM = 2;
+}
+
+enum DiscretizeMethod {
+  // 每个 bucket 等间距
+  EQUAL_SPACING = 0;
+  // 每个 bucket 中的元素个数大致相等
+  EQUAL_NUMBER = 1;
+}
+
+enum CrossMethod {
+  // 笛卡儿积
+  CARTESIAN_PRODUCT = 1;
+  // cosine相似度
+  COSINE_SIMILARITY = 2;
+  // 点积
+  DOT_PRODUCT = 3;
+}
+
+// ========================
+// transformers
+// ========================
+message Discretize {
+  // 如果boundaries为空，根据discretize_level和method划分bucket，得出
+  // boundaries
+  optional int32 discretize_level = 1;
+  optional DiscretizeMethod method = 2 [ default = EQUAL_NUMBER ];
+  // 按照 boundaries 将特征离散化成对应的index
+  // 比如 boundaries = [5, 10, 20, 50]，则
+  // ------5------10-----------------20-------------------------------50-----
+  //    0      1             2                        3                   4
+  // v = 30 就会被离散化成 3
+  repeated int64 boundaries = 3;
+}
+
+message Normalize {
+  // x = (x - mean) / std
+  optional float mean = 1;
+  optional float std = 2;
+}
+
+message HashByMd5 {
+  // 无需参数
+}
+
+message HashByMurmurhash {}
+
+message HashToInterval {
+  optional int64 modulus = 1 [ default = 3000017 ];
+  // x % modulus + offset
+  optional int64 offset = 2 [ default = 0 ];
+}
+
+message Clip {
+  optional float float_min_value = 1;
+  optional float float_max_value = 2;
+  optional int64 int_min_value = 3;
+  optional int64 int_max_value = 4;
+}
+
+message BuildVocabAndConvertToId {
+  // 如果有词典就加载词典，否则根据数据生成一份词典
+  optional string init_vocab_file = 1;
+  // discard vocab with freq < min_freq
+  optional int32 min_freq = 2 [ default = 1 ];
+  // keep max_vocab_num most frequent vocabs, 0 means no limit
+  optional int32 max_vocab_num = 3 [ default = 0 ];
+  // save vocab in vocab_file_name
+  // file format:
+  // word<tab>freq
+  // use index as word id, first one is UNKNOWN for oov words, if for nlp
+  // task, need to add <start> <end> tokens too.
+  optional string vocab_file_name = 4 [ default = "vocab.txt" ];
+}
+
+message Transformer {
+  oneof transform {
+    Discretize discretize = 1;
+    Normalize normalize = 2;
+    HashByMd5 hash_by_md5 = 3;
+    HashByMurmurhash hash_by_murmurhash = 4;
+    HashToInterval hash_to_interval = 5;
+    Clip clip = 6;
+    BuildVocabAndConvertToId build_vocab_and_convert_to_id = 7;
+  }
+}
+
+message Validator {
+  // 一些简单的判断条件，还可以增加更复杂的，比如分布必须满足一定的要求，或者
+  // 数据缺失率必须低于一个阈值等
+  optional bool allow_missing = 1 [ default = false ];
+  optional int64 int_min = 2;
+  optional int64 int_max = 3;
+  optional float float_min = 4;
+  optional float float_max = 5;
+  repeated int64 one_of_int = 6; // allowed values of int feature
+  optional int32 string_min_len = 7;
+  optional int32 string_max_len = 8;
+  repeated string one_of_string = 9; // allowed values of string feature
+  optional int32 dense_value_dim = 10;
+  optional int32 cross_feature_dependency_num = 11;
+  optional float max_missing_ratio = 12;
+  optional ValidatePhase phase = 20 [ default = BEFORE_TRANSFORM ];
+}
+
+message DenseDomain { repeated float value = 2; }
+
+message CrossDomain {
+  optional CrossMethod cross_method = 1 [ default = CARTESIAN_PRODUCT ];
+  // store cartesian product result
+  repeated int64 list_value = 2;
+  // store cosine similarity / dot product result
+  optional float point_value = 3;
+}
+
+message SparseDomain { repeated int64 value = 1; }
+
+message Feature {
+  required FeatureType type = 1;
+  // name 设置成optional，因为样本里的特征可以不填名字（名字作为Sample.feature
+  // 这个dict的key）
+  optional string name = 2;
+  optional Validator validator = 3;
+  oneof value {
+    int64 int_value = 4;
+    float float_value = 5;
+    double double_value = 6;
+    string string_value = 7;
+    bytes bytes_value = 8;
+    // 用于一些embedding类的dense特征
+    DenseDomain dense_value = 9;
+    // 用于一些id类的sparse特征
+    SparseDomain sparse_value = 10;
+    CrossDomain cross_value = 11;
+  }
+  // 可以进行多种转换处理。用repeated是因为转换之间可能有先后依赖关系，按加入
+  // 的顺序来执行。
+  // 如果涉及到需要事先遍历数据计算统计量的转换，为避免多次遍历数据，先判断要
+  // 计算哪些统计量，尽可能在一次遍历里完成统计。
+  // 特征间的依赖关系也需要建立一个DAG，按顺序来处理，比如一些交叉特征或者匹配
+  // 特征，需要两个或多个特征作为输入，这些特征又需要事先转换好。
+  repeated Transformer transformer = 20;
+  // only used to produce other features, not used in training/prediction
+  optional bool is_intermediate_feature = 30 [ default = false ];
+  // current feature (mainly cross feature) depends on other features
+  // used for topological sorting, and input to cross transformer
+  repeated string dependency_feature = 40;
+  optional string desc = 90; // description of this feature
+  optional LifecycleStage lifecycle_stage = 100 [ default = PRODUCTION ];
+}
+
+message Schema {
+  // 应用程序里可以定义minimum schema version，避免兼容性问题
+  required int32 version = 1;
+  // 如果是online模式，默认transform依赖的属性都已经填充好了，不再过一遍数据重
+  // 新统计
+  optional bool is_online_mode = 2 [ default = false ];
+  // 特征列表，在schema里只需要定义基本属性，不需要对value赋值
+  repeated Feature feature = 3;
+}
+
+// Representation of a sample. We can iterate through features in a given
+// schema, and retrieve its value by feature name from feature map, and do
+// the validation.
+// XXX(xudonggong) compile with newer protoc (v3.5.1 is OK)
+message Sample { map<string, Feature> feature = 1; }
