@@ -67,16 +67,17 @@ enum CrossMethod {
 // transformers
 // ========================
 message Discretize {
+  // see `pandas.cut`/`pandas.qcut`
   // 如果boundaries为空，根据discretize_level和method划分bucket，得出
   // boundaries
   optional int32 discretize_level = 1;
   optional DiscretizeMethod method = 2 [ default = EQUAL_NUMBER ];
   // 按照 boundaries 将特征离散化成对应的index
-  // 比如 boundaries = [5, 10, 20, 50]，则
-  // ------5------10-----------------20-------------------------------50-----
-  //    0      1             2                        3                   4
+  // 比如 boundaries = [0, 5, 10, 20, 50]，则
+  // 0------5------10-----------------20-------------------------------50
+  //    0      1             2                        3
   // v = 30 就会被离散化成 3
-  repeated int64 boundaries = 3;
+  repeated float boundaries = 3;
 }
 
 message Normalize {
@@ -145,6 +146,7 @@ message Validator {
   repeated string one_of_string = 9; // allowed values of string feature
   optional int32 dense_value_dim = 10;
   optional int32 cross_feature_dependency_num = 11;
+  // in streaming mode (such as online), consider a running missing ratio?
   optional float max_missing_ratio = 12;
   optional ValidatePhase phase = 20 [ default = BEFORE_TRANSFORM ];
 }
