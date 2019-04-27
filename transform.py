@@ -17,7 +17,7 @@ class Transform:
             feat.float_value = min(spec.float_max_value, feat.float_value)
 
     @classmethod
-    def trans_implement(self, feat, trans):
+    def apply(self, feat, trans):
         ''' apply transformations on features '''
         if trans.HasField('clip'):
             self.clip(feat, trans.clip)

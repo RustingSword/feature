@@ -12,57 +12,6 @@ syntax = "proto2";
 // 计得到，所以先过一遍数据，计算出这些需要的参数之后再设置。配置好之后的schema
 // 可以保存下来，用于线上的inference，确保特征都按照相同的方式做变换。
 
-// reference
-// https://github.com/tensorflow/metadata/blob/master/tensorflow_metadata/proto/v0/schema.proto
-enum LifecycleStage {
-  // feature in later stages can be used in earlier stages, but not vice versa
-  UNKNOWN_STAGE = 0;
-  DEPRECATED = 1;
-  DEBUG_ONLY = 2;
-  ALPHA = 3;
-  BETA = 4;
-  PRODUCTION = 5;
-}
-
-enum FeatureType {
-  INT = 0;
-  FLOAT = 1;
-  STRING = 2;
-  BYTES = 3;
-  // fixed length array
-  DENSE = 4;
-  // varying length array
-  SPARSE = 5;
-  // cross feature
-  CROSS = 6;
-  UNKNOWN_TYPE = 7;
-}
-
-enum ValidatePhase {
-  // before transformation
-  BEFORE_TRANSFORM = 0;
-  // after transformation
-  AFTER_TRANSFORM = 1;
-  // before and after transformation
-  BEFORE_AND_AFTER_TRANSFORM = 2;
-}
-
-enum DiscretizeMethod {
-  // 每个 bucket 等间距
-  EQUAL_SPACING = 0;
-  // 每个 bucket 中的元素个数大致相等
-  EQUAL_NUMBER = 1;
-}
-
-enum CrossMethod {
-  // 笛卡儿积
-  CARTESIAN_PRODUCT = 1;
-  // cosine相似度
-  COSINE_SIMILARITY = 2;
-  // 点积
-  DOT_PRODUCT = 3;
-}
-
 // ========================
 // transformers
 // ========================
@@ -71,6 +20,14 @@ message Discretize {
   // 如果boundaries为空，根据discretize_level和method划分bucket，得出
   // boundaries
   optional int32 discretize_level = 1;
+
+  enum DiscretizeMethod {
+    // 每个 bucket 等间距
+    EQUAL_SPACING = 0;
+    // 每个 bucket 中的元素个数大致相等
+    EQUAL_NUMBER = 1;
+  }
+
   optional DiscretizeMethod method = 2 [ default = EQUAL_NUMBER ];
   // 按照 boundaries 将特征离散化成对应的index
   // 比如 boundaries = [0, 5, 10, 20, 50]，则
@@ -148,12 +105,30 @@ message Validator {
   optional int32 cross_feature_dependency_num = 11;
   // in streaming mode (such as online), consider a running missing ratio?
   optional float max_missing_ratio = 12;
+
+  enum ValidatePhase {
+    // before transformation
+    BEFORE_TRANSFORM = 0;
+    // after transformation
+    AFTER_TRANSFORM = 1;
+    // before and after transformation
+    BEFORE_AND_AFTER_TRANSFORM = 2;
+  }
+
   optional ValidatePhase phase = 20 [ default = BEFORE_TRANSFORM ];
 }
 
 message DenseDomain { repeated float value = 2; }
 
 message CrossDomain {
+  enum CrossMethod {
+    // 笛卡儿积
+    CARTESIAN_PRODUCT = 1;
+    // cosine相似度
+    COSINE_SIMILARITY = 2;
+    // 点积
+    DOT_PRODUCT = 3;
+  }
   optional CrossMethod cross_method = 1 [ default = CARTESIAN_PRODUCT ];
   // store cartesian product result
   repeated int64 list_value = 2;
@@ -164,7 +139,22 @@ message CrossDomain {
 message SparseDomain { repeated int64 value = 1; }
 
 message Feature {
-  required FeatureType type = 1;
+  enum FeatureType {
+    INT = 0;
+    FLOAT = 1;
+    STRING = 2;
+    BYTES = 3;
+    // fixed length array
+    DENSE = 4;
+    // varying length array
+    SPARSE = 5;
+    // cross feature
+    CROSS = 6;
+    UNKNOWN_TYPE = 7;
+  }
+
+  optional FeatureType type = 1 [default = INT];
+
   // name 设置成optional，因为样本里的特征可以不填名字（名字作为Sample.feature
   // 这个dict的key）
   optional string name = 2;
@@ -194,12 +184,25 @@ message Feature {
   // used for topological sorting, and input to cross transformer
   repeated string dependency_feature = 40;
   optional string desc = 90; // description of this feature
+
+  // reference
+  // https://github.com/tensorflow/metadata/blob/master/tensorflow_metadata/proto/v0/schema.proto
+  enum LifecycleStage {
+    // feature in later stages can be used in earlier stages, but not vice versa
+    UNKNOWN_STAGE = 0;
+    DEPRECATED = 1;
+    DEBUG_ONLY = 2;
+    ALPHA = 3;
+    BETA = 4;
+    PRODUCTION = 5;
+  }
+
   optional LifecycleStage lifecycle_stage = 100 [ default = PRODUCTION ];
 }
 
 message Schema {
   // 应用程序里可以定义minimum schema version，避免兼容性问题
-  required int32 version = 1;
+  optional int32 version = 1;
   // 如果是online模式，默认transform依赖的属性都已经填充好了，不再过一遍数据重
   // 新统计
   optional bool is_online_mode = 2 [ default = false ];
