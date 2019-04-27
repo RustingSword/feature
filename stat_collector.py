@@ -1,7 +1,6 @@
 from collections import defaultdict
 from collections import Counter
-from feature_pb2 import EQUAL_SPACING
-from feature_pb2 import EQUAL_NUMBER
+import feature_pb2 as feature
 import numpy as np
 
 class StatCollector:
@@ -56,7 +55,7 @@ class StatCollector:
         values = np.asarray(self.value[feature_name])
         return np.mean(values), np.std(values)
 
-    def build_bucket(self, feature_name, level=10, method=EQUAL_NUMBER):
+    def build_bucket(self, feature_name, level=10, method=feature.Discretize.EQUAL_NUMBER):
         if feature_name not in self.value:
             raise KeyError('feature {feature_name} does not exist')
         values = np.asarray(self.value[feature_name])
@@ -79,10 +78,10 @@ class StatCollector:
 
             return score
 
-        if method == EQUAL_SPACING:
+        if method == feature.Discretize.EQUAL_SPACING:
             max_value, min_value = np.max(values), np.min(values)
             boundaries = np.linspace(min_value, max_value, level)
-        elif method == EQUAL_NUMBER:
+        elif method == feature.Discretize.EQUAL_NUMBER:
             values = np.sort(values)
             quantiles = np.linspace(0, 1, level)
             boundaries = []

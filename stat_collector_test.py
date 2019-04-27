@@ -1,5 +1,5 @@
 from stat_collector import StatCollector
-from feature_pb2 import EQUAL_SPACING
+import feature_pb2 as feature
 import random
 import numpy as np
 import sys
@@ -13,7 +13,7 @@ for v in values:
 
 buckets = collector.build_bucket('random')
 print('equal number (quantile):', buckets)
-buckets = collector.build_bucket('random', method=EQUAL_SPACING)
+buckets = collector.build_bucket('random', method=feature.Discretize.EQUAL_SPACING)
 print('equal spacing:', buckets)
 
 
@@ -24,7 +24,13 @@ stopwords = set([
         '#',
         "'''",
         '%',
-        '%s'
+        '%s',
+        '/',
+        '//',
+        '{',
+        '}',
+        '[',
+        ']'
     ])
 
 with open(sys.argv[1]) as fin:
