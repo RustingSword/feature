@@ -1,10 +1,12 @@
 from collections import defaultdict
 from collections import Counter
-import feature_pb2 as feature
 import numpy as np
+import feature_pb2 as feature
+
 
 class StatCollector:
     ''' collect stats '''
+
     def __init__(self):
         self.vocab = defaultdict(Counter)
         self.mean = {}
@@ -17,11 +19,11 @@ class StatCollector:
         elif isinstance(words, str):
             self.vocab[feature_name][words] += 1
         else:
-            raise ValueError('can only create vocab for string feature, got '
+            raise ValueError(f'can only create vocab for string feature, got '
                              '{words} with type {type(words)}')
 
-    def build_vocab(self, feature_name, stopwords=set(), savefile=None, limit=0,
-            minfreq=1):
+    def build_vocab(self, feature_name, stopwords=None, savefile=None, limit=0,
+                    minfreq=1):
         complete_vocab = self.vocab[feature_name]
         words = list(complete_vocab.keys())
         for word in words:
@@ -51,21 +53,22 @@ class StatCollector:
 
     def compute_mean_std(self, feature_name):
         if feature_name not in self.value:
-            raise KeyError('feature {feature_name} does not exist')
+            raise KeyError(f'feature {feature_name} does not exist')
         values = np.asarray(self.value[feature_name])
         return np.mean(values), np.std(values)
 
-    def build_bucket(self, feature_name, level=10, method=feature.Discretize.EQUAL_NUMBER):
+    def build_bucket(self, feature_name, level=10,
+                     method=feature.Discretize.QUANTILE):
         if feature_name not in self.value:
-            raise KeyError('feature {feature_name} does not exist')
+            raise KeyError(f'feature {feature_name} does not exist')
         values = np.asarray(self.value[feature_name])
         if len(values) < level:
-            raise ValueError('feature {feature_name} has only {len(values)} '
+            raise ValueError(f'feature {feature_name} has only {len(values)} '
                              'values, less than discretize level {level}')
 
         # referred pandas.core.algorithms.quantile
         def _get_score(at):
-            if len(values) == 0:
+            if not values.any():
                 return np.nan
 
             idx = at * (len(values) - 1)
@@ -78,10 +81,10 @@ class StatCollector:
 
             return score
 
-        if method == feature.Discretize.EQUAL_SPACING:
+        if method == feature.Discretize.EQUALLY_SPACED:
             max_value, min_value = np.max(values), np.min(values)
             boundaries = np.linspace(min_value, max_value, level)
-        elif method == feature.Discretize.EQUAL_NUMBER:
+        elif method == feature.Discretize.QUANTILE:
             values = np.sort(values)
             quantiles = np.linspace(0, 1, level)
             boundaries = []

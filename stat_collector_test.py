@@ -1,8 +1,7 @@
-from stat_collector import StatCollector
-import feature_pb2 as feature
-import random
-import numpy as np
 import sys
+import numpy as np
+import feature_pb2 as feature
+from stat_collector import StatCollector
 
 
 collector = StatCollector()
@@ -13,8 +12,8 @@ for v in values:
 
 buckets = collector.build_bucket('random')
 print('equal number (quantile):', buckets)
-buckets = collector.build_bucket('random', method=feature.Discretize.EQUAL_SPACING)
-print('equal spacing:', buckets)
+buckets = collector.build_bucket('random', method=feature.Discretize.EQUALLY_SPACED)
+print('equally spaced:', buckets)
 
 
 stopwords = set([
@@ -39,6 +38,6 @@ with open(sys.argv[1]) as fin:
         collector.collect_vocab('code', words)
 
 vocab = collector.build_vocab('code', savefile='code_vocab.txt', minfreq=3,
-        stopwords=stopwords, limit=10)
+                              stopwords=stopwords, limit=10)
 
 print(vocab)

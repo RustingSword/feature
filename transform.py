@@ -1,11 +1,11 @@
-
+''' transformers '''
 class Transform:
     ''' Transform features as specified in a given schema '''
     def __init__(self):
         pass
 
     @classmethod
-    def clip(self, feat, spec):
+    def clip(cls, feat, spec):
         ''' clip feature value '''
         if spec.HasField('int_min_value'):
             feat.int_value = max(spec.int_min_value, feat.int_value)
@@ -17,7 +17,7 @@ class Transform:
             feat.float_value = min(spec.float_max_value, feat.float_value)
 
     @classmethod
-    def apply(self, feat, trans):
+    def apply(cls, feat, trans):
         ''' apply transformations on features '''
         if trans.HasField('clip'):
-            self.clip(feat, trans.clip)
+            cls.clip(feat, trans.clip)

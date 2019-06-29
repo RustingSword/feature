@@ -23,12 +23,12 @@ message Discretize {
 
   enum DiscretizeMethod {
     // 每个 bucket 等间距
-    EQUAL_SPACING = 0;
+    EQUALLY_SPACED = 0;
     // 每个 bucket 中的元素个数大致相等
-    EQUAL_NUMBER = 1;
+    QUANTILE = 1;
   }
 
-  optional DiscretizeMethod method = 2 [ default = EQUAL_NUMBER ];
+  optional DiscretizeMethod method = 2 [ default = EQUALLY_SPACED ];
   // 按照 boundaries 将特征离散化成对应的index
   // 比如 boundaries = [0, 5, 10, 20, 50]，则
   // 0------5------10-----------------20-------------------------------50
@@ -113,12 +113,16 @@ message Validator {
     AFTER_TRANSFORM = 1;
     // before and after transformation
     BEFORE_AND_AFTER_TRANSFORM = 2;
+    // skip
+    SKIPPED = 3;
   }
 
   optional ValidatePhase phase = 20 [ default = BEFORE_TRANSFORM ];
 }
 
-message DenseDomain { repeated float value = 2; }
+message DenseDomain { repeated float value = 1; }
+
+message SparseDomain { repeated int64 value = 1; }
 
 message CrossDomain {
   enum CrossMethod {
@@ -135,8 +139,6 @@ message CrossDomain {
   // store cosine similarity / dot product result
   optional float point_value = 3;
 }
-
-message SparseDomain { repeated int64 value = 1; }
 
 message Feature {
   enum FeatureType {

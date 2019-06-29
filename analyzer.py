@@ -1,4 +1,4 @@
-
+''' analyzer '''
 from __future__ import print_function
 
 from collections import defaultdict
@@ -9,6 +9,7 @@ class Analyzer:
     1. create DAG of features
     2. collect statistics that are needed for validator/transformer
     '''
+
     def __init__(self, schema):
         self.schema = schema
         self.features_in_topo_order = []
@@ -20,13 +21,16 @@ class Analyzer:
 
     @property
     def topo_sorted_feature(self):
+        ''' topo '''
         return self.features_in_topo_order
 
     @property
     def stats_to_collect(self):
+        ''' stats to be collected '''
         return self.needed_stats
 
     def visit(self, feat):
+        ''' helper function '''
         if feat in self.features_in_topo_order:
             return
         if feat in self.temporary:
@@ -53,7 +57,8 @@ class Analyzer:
             current_feature = self.feature_set.pop()
             self.visit(current_feature)
 
-    def collect_by_transforms(self, feat):
+    def collect_stats_by_transforms(self, feat):
+        ''' stats needed by transformers '''
         for trans in feat.transformer:
             if trans.HasField('discretize'):
                 if not trans.discretize.boundaries:
@@ -74,11 +79,11 @@ class Analyzer:
                                      'initialized' % feat.name)
             if trans.HasField('build_vocab_and_convert_to_id'):
                 transform = trans.build_vocab_and_convert_to_id
-                if transform.HasField('init_vocab_file'):
-                    continue
-                self.needed_stats[feat.name].add('vocab')
+                if not transform.HasField('init_vocab_file'):
+                    self.needed_stats[feat.name].add('vocab')
 
-    def collect_by_validators(self, feat):
+    def collect_stats_by_validators(self, feat):
+        ''' stats needed by validators '''
         if feat.validator.HasField('max_missing_ratio'):
             self.needed_stats[feat.name].add('missing_ratio')
 
@@ -89,7 +94,7 @@ class Analyzer:
 
         for feat in self.schema.feature:
             # check for transformers
-            self.collect_by_transforms(feat)
+            self.collect_stats_by_transforms(feat)
 
             # check for validators
-            self.collect_by_validators(feat)
+            self.collect_stats_by_validators(feat)

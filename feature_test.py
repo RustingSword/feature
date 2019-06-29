@@ -3,14 +3,16 @@
 ''' test feature.proto '''
 
 from __future__ import print_function
+import os
+os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
 from functools import reduce  # pylint: disable=redefined-builtin
 from itertools import product
+from operator import mul
 
 from google.protobuf import text_format
 from numpy import dot
 from numpy.linalg import norm
-from operator import mul
 
 import feature_pb2 as feature
 from analyzer import Analyzer
@@ -29,6 +31,7 @@ def define_schema():
     validator = feature.Validator()
     validator.int_min = 0
     validator.int_max = 99
+    validator.phase = feature.Validator.SKIPPED
     new_feature = schema.feature.add(type=feature.Feature.INT, name='age',
                                      validator=validator,
                                      lifecycle_stage=feature.Feature.ALPHA)
@@ -173,10 +176,10 @@ def cross_feature_sanity_check(sample, feat, schema):
     '''
     for name in feat.dependency_feature:
         if name not in sample.feature:
-            raise ValueError('dependency feature %s not in sample' % (name))
+            raise ValueError(f'dependency feature {name} not in sample')
         cross_feat = get_feature_by_name(name, schema)
         if cross_feat is None:
-            raise ValueError('dependency feature %s not in schema' % (name))
+            raise ValueError(f'dependency feature {name} not in schema')
         if cross_feat.lifecycle_stage < feat.lifecycle_stage:
             raise ValueError('dependency feature %s in stage %s cannot be '
                              'used for cross feature %s in stage %s' % (
@@ -209,8 +212,8 @@ def add_cartesian_cross_feature(sample, feat):
             raise ValueError(
                 'only accept one of ["INT", "SPARSE", "CROSS"] features, \
                         got %s' % feature.FeatureType.Name(
-                    current_feature.type))
-    prod = product(*feature_values)  # pylint: disable=star-args
+                            current_feature.type))
+    prod = product(*feature_values)  # pylint: disable=bad-option-value
     result = []
     for crossed_value in prod:
         result.append(reduce(mul, crossed_value))
@@ -278,6 +281,9 @@ def validate(sample, schema, stage=feature.Validator.BEFORE_TRANSFORM):
                   (name, feature.Feature.LifecycleStage.Name(feat.lifecycle_stage)))
             continue
         validator = feat.validator
+        if validator.phase == feature.Validator.SKIPPED:
+            print(f'skip validator of {feat.name}')
+            continue
         if validator.phase not in (stage, feature.Validator.BEFORE_AND_AFTER_TRANSFORM):
             continue
         if name not in sample.feature:
@@ -337,7 +343,7 @@ def print_final_sample(sample, schema):
             value = feature_in_sample.sparse_value
         elif feature_in_sample.type == feature.Feature.CROSS:
             value = feature_in_sample.cross_value
-        print('value of %s (%s): %s' % (feat.name, feat.desc, value))
+        print(f'value of {feat.name} ({feat.desc}): {value}')
 
 
 def main():
