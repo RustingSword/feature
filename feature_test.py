@@ -12,7 +12,7 @@ import feature_pb2 as feature
 from analyzer import Analyzer
 from transform import transform
 from validator import validate
-from config import CURRENT_STAGE, MININUM_SCHEMA_VERSION
+from config import CURRENT_STAGE, MINIMUM_SCHEMA_VERSION
 
 def define_schema():
     ''' define a schema '''
@@ -152,8 +152,8 @@ def generate_feature():
 def main():
     ''' entry '''
     schema_demo = define_schema()
-    if schema_demo.version < MININUM_SCHEMA_VERSION:
-        raise RuntimeError(f'schema version {schema_demo.version} < required mininum schema version {MININUM_SCHEMA_VERSION}')
+    if schema_demo.version < MINIMUM_SCHEMA_VERSION:
+        raise RuntimeError(f'schema version {schema_demo.version} < required mininum schema version {MINIMUM_SCHEMA_VERSION}')
     print(text_format.MessageToString(schema_demo, as_utf8=True))
     schema_analyzer = Analyzer(schema_demo)
     schema_analyzer.topo_sort()
