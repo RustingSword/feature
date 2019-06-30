@@ -1,4 +1,7 @@
-# 特征处理框架
+# Feature process framework
+
+Can be viewed as a simplified version of [TFX](https://www.tensorflow.org/tfx/),
+with data validation/transform capabilities.
 
 ## 特征验证
 
