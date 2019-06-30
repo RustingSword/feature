@@ -18,6 +18,7 @@ class Analyzer:
         self.feature_set = set()
         self.temporary = set()
         self.needed_stats = defaultdict(set)
+        self.transformers = defaultdict(dict)
 
     @property
     def topo_sorted_feature(self):
@@ -28,6 +29,10 @@ class Analyzer:
     def stats_to_collect(self):
         ''' stats to be collected '''
         return self.needed_stats
+
+    @property
+    def corresponding_transformers(self):
+        return self.transformers
 
     def visit(self, feat):
         ''' helper function '''
@@ -65,6 +70,7 @@ class Analyzer:
                     if not trans.discretize.HasField('discretize_level'):
                         raise ValueError('discretize level not specified')
                     self.needed_stats[feat.name].add('bucket_info')
+                    self.transformers[feat.name]['bucket_info'] = trans
             if trans.HasField('normalize'):
                 if not trans.normalize.HasField('mean'):
                     self.needed_stats[feat.name].add('mean')
@@ -81,13 +87,14 @@ class Analyzer:
                 transform = trans.build_vocab_and_convert_to_id
                 if not transform.HasField('init_vocab_file'):
                     self.needed_stats[feat.name].add('vocab')
+                    self.transformers[feat.name]['vocab'] = trans
 
     def collect_stats_by_validators(self, feat):
         ''' stats needed by validators '''
         if feat.validator.HasField('max_missing_ratio'):
             self.needed_stats[feat.name].add('missing_ratio')
 
-    def collect_needed_stats(self):
+    def collect_needed_stats_type(self):
         ''' collect statistics that needed for validators and transformers '''
         if self.schema.is_online_mode:
             return

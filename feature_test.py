@@ -6,26 +6,18 @@ from __future__ import print_function
 import os
 os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 
-from functools import reduce  # pylint: disable=redefined-builtin
-from itertools import product
-from operator import mul
-
 from google.protobuf import text_format
-from numpy import dot
-from numpy.linalg import norm
 
 import feature_pb2 as feature
 from analyzer import Analyzer
-from transform import Transform
-from validator import Validator
-
-CURRENT_STAGE = feature.Feature.ALPHA
-
+from transform import transform
+from validator import validate
+from config import CURRENT_STAGE, MININUM_SCHEMA_VERSION
 
 def define_schema():
     ''' define a schema '''
     schema = feature.Schema()
-    schema.version = 1
+    schema.version = 2
 
     # age
     validator = feature.Validator()
@@ -61,7 +53,8 @@ def define_schema():
     new_feature = schema.feature.add(type=feature.Feature.STRING, name='city',
                                      validator=validator)
     new_feature.desc = "user's city"
-    trans = new_feature.transformer.add(hash_by_md5=feature.HashByMd5())
+    hash_method = feature.HashToInteger(hash_function=feature.HashToInteger.XXHASH)
+    trans = new_feature.transformer.add(hash_to_integer=hash_method)
 
     # dense (embedding)
     validator = feature.Validator()
@@ -88,8 +81,6 @@ def define_schema():
     new_feature = schema.feature.add(type=feature.Feature.FLOAT, name='ctr',
                                      validator=validator)
     new_feature.desc = 'ctr of news'
-    trans = new_feature.transformer.add()
-    trans.discretize.discretize_level = 10
 
     # cross feature
     validator = feature.Validator(int_min=0, int_max=2000,
@@ -158,209 +149,23 @@ def generate_feature():
     sample = feature.Sample(feature=features)
     return sample
 
-
-def get_feature_by_name(fname, schema):
-    ''' features in schema is stored in a list, iterate through them to find
-    feature with given name '''
-    for feat in schema.feature:
-        if feat.name == fname:
-            return feat
-    return None
-
-
-def cross_feature_sanity_check(sample, feat, schema):
-    ''' sanity check:
-    - dependency features must exist in sample
-    - lifecycle stage of dependency features should be equal or
-      later than CURRENT_STAGE and current feature's lifecycle stage
-    '''
-    for name in feat.dependency_feature:
-        if name not in sample.feature:
-            raise ValueError(f'dependency feature {name} not in sample')
-        cross_feat = get_feature_by_name(name, schema)
-        if cross_feat is None:
-            raise ValueError(f'dependency feature {name} not in schema')
-        if cross_feat.lifecycle_stage < feat.lifecycle_stage:
-            raise ValueError('dependency feature %s in stage %s cannot be '
-                             'used for cross feature %s in stage %s' % (
-                                 name,
-                                 feature.LifecycleStage.Name(
-                                     cross_feat.lifecycle_stage),
-                                 feat.name,
-                                 feature.LifecycleStage.Name(feat.lifecycle_stage)))
-        if cross_feat.lifecycle_stage < CURRENT_STAGE:
-            raise ValueError('dependency feature %s in stage %s cannot be '
-                             'used in current stage %s' % (
-                                 name,
-                                 feature.LifecycleStage.Name(
-                                     cross_feat.lifecycle_stage),
-                                 feature.LifecycleStage.Name(CURRENT_STAGE)))
-
-
-def add_cartesian_cross_feature(sample, feat):
-    ''' cartesian product of two or more features '''
-    feature_values = []
-    for name in feat.dependency_feature:
-        current_feature = sample.feature[name]
-        if current_feature.type == feature.Feature.INT:
-            feature_values.append([current_feature.int_value])
-        elif current_feature.type == feature.Feature.SPARSE:
-            feature_values.append(current_feature.sparse_value.value)
-        elif current_feature.type == feature.Feature.CROSS:
-            feature_values.append(current_feature.cross_value.list_value)
-        else:
-            raise ValueError(
-                'only accept one of ["INT", "SPARSE", "CROSS"] features, \
-                        got %s' % feature.FeatureType.Name(
-                            current_feature.type))
-    prod = product(*feature_values)  # pylint: disable=bad-option-value
-    result = []
-    for crossed_value in prod:
-        result.append(reduce(mul, crossed_value))
-    return result
-
-
-def add_dot_cross_feature(sample, feat):
-    ''' dot product/cosine similarity of two dense features '''
-    assert len(feat.dependency_feature) == 2
-    feat1, feat2 = feat.dependency_feature
-    feat1, feat2 = sample.feature[feat1], sample.feature[feat2]
-    assert feat1.type == feature.Feature.DENSE
-    assert feat2.type == feature.Feature.DENSE
-    value1 = feat1.dense_value.value
-    value2 = feat2.dense_value.value
-    assert len(value1) == len(value2)
-    if feat.cross_value.cross_method == feature.CrossDomain.COSINE_SIMILARITY:
-        norm1 = norm(value1)
-        norm2 = norm(value2)
-        if norm1 == 0 or norm2 == 0:
-            crossed_value = 0.0
-        else:
-            crossed_value = dot(value1, value2) / (norm1 * norm2)
-    elif feat.cross_value.cross_method == feature.CrossDomain.DOT_PRODUCT:
-        crossed_value = dot(value1, value2)
-    else:
-        raise ValueError('unsupported cross operation %s' % (
-            feature.CrossMethod.Name(feat.cross_value.cross_method)))
-    return crossed_value
-
-
-def add_cross_feature(sample, feat, schema):
-    ''' add a crossed feature '''
-    cross_feature_sanity_check(sample, feat, schema)
-    cross_method = feat.cross_value.cross_method
-    new_feature = feature.Feature(type=feature.Feature.CROSS)
-    if cross_method == feature.CrossDomain.CARTESIAN_PRODUCT:
-        crossed_values = add_cartesian_cross_feature(sample, feat)
-        new_feature.cross_value.list_value.extend(crossed_values)
-    else:  # both COSINE_SIMILARITY and DOT_PRODUCT require two DENSE features
-        crossed_value = add_dot_cross_feature(sample, feat)
-        new_feature.cross_value.point_value = crossed_value
-    sample.feature[feat.name].CopyFrom(new_feature)
-
-
-def transform(sample, schema):
-    ''' transform '''
-    for feat in schema.feature:
-        if feat.type == feature.Feature.CROSS:
-            add_cross_feature(sample, feat, schema)
-        feature_in_sample = sample.feature[feat.name]
-        for trans in feat.transformer:
-            Transform.apply(feature_in_sample, trans)
-
-
-def validate(sample, schema, stage=feature.Validator.BEFORE_TRANSFORM):
-    ''' validate sample against schema '''
-    print('='*20)
-    print('validation of stage %s' % (feature.Validator.ValidatePhase.Name(stage)))
-    print('='*20)
-    for feat in schema.feature:
-        name = feat.name
-        if feat.lifecycle_stage < CURRENT_STAGE:
-            print('ignore feature %s (lifecycle stage %s)' %
-                  (name, feature.Feature.LifecycleStage.Name(feat.lifecycle_stage)))
-            continue
-        validator = feat.validator
-        if validator.phase == feature.Validator.SKIPPED:
-            print(f'skip validator of {feat.name}')
-            continue
-        if validator.phase not in (stage, feature.Validator.BEFORE_AND_AFTER_TRANSFORM):
-            continue
-        if name not in sample.feature:
-            if feat.type == feature.Feature.CROSS or validator.allow_missing:
-                # CROSS feature will be generated in transformation stage
-                continue
-            raise ValueError('feature %s is missing' % name)
-        feature_in_sample = sample.feature[name]
-        if feature_in_sample.type != feat.type:
-            raise ValueError('feature type unmatch (%s != %s)' %
-                             (feature.FeatureType.Name(feature_in_sample.type),
-                              feature.FeatureType.Name(feat.type)))
-        if feature_in_sample.type == feature.Feature.INT:
-            value = feature_in_sample.int_value
-            Validator.validate_int(value, validator)
-        elif feature_in_sample.type == feature.Feature.FLOAT:
-            value = feature_in_sample.float_value
-            Validator.validate_float(value, validator)
-        elif feature_in_sample.type == feature.Feature.STRING:
-            value = feature_in_sample.string_value
-            Validator.validate_string(value, validator)
-        elif feature_in_sample.type == feature.Feature.DENSE:
-            value = feature_in_sample.dense_value
-            Validator.validate_dense(value, validator)
-        elif feature_in_sample.type == feature.Feature.SPARSE:
-            value = feature_in_sample.sparse_value
-            Validator.validate_sparse(value, validator)
-        elif feature_in_sample.type == feature.Feature.CROSS:
-            value = feature_in_sample.cross_value
-            Validator.validate_cross(value, validator)
-        # print('value of %s (%s): %s' % (name, feat.desc, value))
-
-
-def print_final_sample(sample, schema):
-    ''' print feature values in sample '''
-    print('='*20)
-    print('feature valuse of sample')
-    print('='*20)
-    for feat in schema.feature:
-        if feat.lifecycle_stage < CURRENT_STAGE:
-            print('ignore feature %s (lifecycle stage %s)' %
-                  (feat.name, feature.Feature.LifecycleStage.Name(feat.lifecycle_stage)))
-            continue
-        if feat.is_intermediate_feature:
-            print('ignore intermediate feature %s' % (feat.name))
-            continue
-        feature_in_sample = sample.feature[feat.name]
-        if feature_in_sample.type == feature.Feature.INT:
-            value = feature_in_sample.int_value
-        elif feature_in_sample.type == feature.Feature.FLOAT:
-            value = feature_in_sample.float_value
-        elif feature_in_sample.type == feature.Feature.STRING:
-            value = feature_in_sample.string_value
-        elif feature_in_sample.type == feature.Feature.DENSE:
-            value = feature_in_sample.dense_value
-        elif feature_in_sample.type == feature.Feature.SPARSE:
-            value = feature_in_sample.sparse_value
-        elif feature_in_sample.type == feature.Feature.CROSS:
-            value = feature_in_sample.cross_value
-        print(f'value of {feat.name} ({feat.desc}): {value}')
-
-
 def main():
     ''' entry '''
     schema_demo = define_schema()
+    if schema_demo.version < MININUM_SCHEMA_VERSION:
+        raise RuntimeError(f'schema version {schema_demo.version} < required mininum schema version {MININUM_SCHEMA_VERSION}')
     print(text_format.MessageToString(schema_demo, as_utf8=True))
     schema_analyzer = Analyzer(schema_demo)
     schema_analyzer.topo_sort()
     print('features in topological order:',
           schema_analyzer.topo_sorted_feature)
-    schema_analyzer.collect_needed_stats()
+    schema_analyzer.collect_needed_stats_type()
     print('statistics to be collected:', schema_analyzer.stats_to_collect)
     sample_demo = generate_feature()
     validate(sample_demo, schema_demo, feature.Validator.BEFORE_TRANSFORM)
     transform(sample_demo, schema_demo)
     validate(sample_demo, schema_demo, feature.Validator.AFTER_TRANSFORM)
-    print_final_sample(sample_demo, schema_demo)
+    print(sample_demo)
 
 
 if __name__ == '__main__':

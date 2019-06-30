@@ -1,0 +1,47 @@
+version: 1
+feature {
+  type: FLOAT
+  name: "age"
+  validator {
+    float_min: 0.0
+    float_max: 80.0
+  }
+  transformer {
+    discretize {
+      discretize_level: 5
+      boundaries: 0.0
+      boundaries: 6.0
+      boundaries: 24.0
+      boundaries: 35.0
+      boundaries: 80.0
+    }
+  }
+  desc: "age of passangers"
+}
+feature {
+  type: STRING
+  name: "sex"
+  validator {
+    one_of_string: "male"
+    one_of_string: "female"
+  }
+  is_intermediate_feature: true
+  desc: "sex of passangers"
+}
+feature {
+  type: INT
+  name: "pclass"
+  desc: "class of ticket"
+}
+feature {
+  type: FLOAT
+  name: "fare"
+  desc: "ticket fare"
+}
+feature {
+  type: CROSS
+  name: "pclass_X_sex"
+  dependency_feature: "pclass"
+  dependency_feature: "sex"
+  desc: "cross sex and pclass"
+}

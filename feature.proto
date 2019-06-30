@@ -28,7 +28,7 @@ message Discretize {
     QUANTILE = 1;
   }
 
-  optional DiscretizeMethod method = 2 [ default = EQUALLY_SPACED ];
+  optional DiscretizeMethod method = 2 [ default = QUANTILE ];
   // 按照 boundaries 将特征离散化成对应的index
   // 比如 boundaries = [0, 5, 10, 20, 50]，则
   // 0------5------10-----------------20-------------------------------50
@@ -43,23 +43,28 @@ message Normalize {
   optional float std = 2;
 }
 
-message HashByMd5 {
-  // 无需参数
+message HashToInteger {
+  // string => 64 bit unsigned integer
+  // only used internally, no need to be explicitly used
+  enum HashFunction {
+    MD5 = 0;
+    MURMURHASH3 = 1;
+    XXHASH = 2;
+  }
+  optional HashFunction hash_function = 1 [ default = XXHASH ];
 }
 
-message HashByMurmurhash {}
-
 message HashToInterval {
-  optional int64 modulus = 1 [ default = 3000017 ];
+  optional uint64 modulus = 1 [ default = 3000017 ];
   // x % modulus + offset
-  optional int64 offset = 2 [ default = 0 ];
+  optional uint64 offset = 2 [ default = 0 ];
 }
 
 message Clip {
   optional float float_min_value = 1;
   optional float float_max_value = 2;
-  optional int64 int_min_value = 3;
-  optional int64 int_max_value = 4;
+  optional uint64 int_min_value = 3;
+  optional uint64 int_max_value = 4;
 }
 
 message BuildVocabAndConvertToId {
@@ -69,41 +74,57 @@ message BuildVocabAndConvertToId {
   optional int32 min_freq = 2 [ default = 1 ];
   // keep max_vocab_num most frequent vocabs, 0 means no limit
   optional int32 max_vocab_num = 3 [ default = 0 ];
+  optional int32 vocab_num = 4;  // set this after vocab is built
   // save vocab in vocab_file_name
   // file format:
   // word<tab>freq
-  // use index as word id, first one is UNKNOWN for oov words, if for nlp
-  // task, need to add <start> <end> tokens too.
-  optional string vocab_file_name = 4 [ default = "vocab.txt" ];
+  // use index as word id, first one is OOV_SYMBOL for oov words
+  // TODO for nlp task, add <start> <end> tokens too.
+  optional string vocab_file_name = 5 [ default = "vocab.txt" ];
+  // to keep schema small, don't store vocab dict here, load it from
+  // vocab_file_name when necessary.
+  // optional map<string, int32> word_to_index = 6;
 }
 
 message Transformer {
+  // transformation won't change original feature type. So if a type of feature
+  // is transformed into another type of feature, it should be added as a new
+  // feature
   oneof transform {
     Discretize discretize = 1;
     Normalize normalize = 2;
-    HashByMd5 hash_by_md5 = 3;
-    HashByMurmurhash hash_by_murmurhash = 4;
-    HashToInterval hash_to_interval = 5;
-    Clip clip = 6;
-    BuildVocabAndConvertToId build_vocab_and_convert_to_id = 7;
+    HashToInteger hash_to_integer = 3;
+    HashToInterval hash_to_interval = 4;
+    Clip clip = 5;
+    BuildVocabAndConvertToId build_vocab_and_convert_to_id = 6;
   }
+
+  // sometimes transformation is applied only on dependency features, such as
+  // convert float feature to integer through discretization.
+  // TODO change type or create a new feature? prefer change type maybe
+  enum ApplyOn {
+    DEPENDENCY = 0;
+    SELF = 1;
+    BOTH_DEPENDENCY_AND_SELF = 2;
+  }
+  optional ApplyOn apply_on = 10 [ default = SELF ];
 }
 
 message Validator {
   // 一些简单的判断条件，还可以增加更复杂的，比如分布必须满足一定的要求，或者
   // 数据缺失率必须低于一个阈值等
   optional bool allow_missing = 1 [ default = false ];
-  optional int64 int_min = 2;
-  optional int64 int_max = 3;
+  optional uint64 int_min = 2;
+  optional uint64 int_max = 3;
   optional float float_min = 4;
   optional float float_max = 5;
-  repeated int64 one_of_int = 6; // allowed values of int feature
+  repeated uint64 one_of_int = 6; // allowed values of int feature
   optional int32 string_min_len = 7;
   optional int32 string_max_len = 8;
   repeated string one_of_string = 9; // allowed values of string feature
   optional int32 dense_value_dim = 10;
   optional int32 cross_feature_dependency_num = 11;
-  // in streaming mode (such as online), consider a running missing ratio?
+  // TODO in streaming mode (such as online), keep a running missing ratio?
   optional float max_missing_ratio = 12;
 
   enum ValidatePhase {
@@ -122,20 +143,23 @@ message Validator {
 
 message DenseDomain { repeated float value = 1; }
 
-message SparseDomain { repeated int64 value = 1; }
+message SparseDomain { repeated uint64 value = 1; }
+
+message StringList { repeated string value = 1; }
 
 message CrossDomain {
   enum CrossMethod {
-    // 笛卡儿积
-    CARTESIAN_PRODUCT = 1;
+    // 笛卡儿积, only accept INT/SPARSE/CROSS input, other type of features
+    // should first be hash to integers using the HashToInteger transformer.
+    CARTESIAN_PRODUCT = 0;
     // cosine相似度
-    COSINE_SIMILARITY = 2;
+    COSINE_SIMILARITY = 1;
     // 点积
-    DOT_PRODUCT = 3;
+    DOT_PRODUCT = 2;
   }
   optional CrossMethod cross_method = 1 [ default = CARTESIAN_PRODUCT ];
-  // store cartesian product result
-  repeated int64 list_value = 2;
+  // store cartesian product result (assume unsigned int64)
+  repeated uint64 list_value = 2;
   // store cosine similarity / dot product result
   optional float point_value = 3;
 }
@@ -144,15 +168,18 @@ message Feature {
   enum FeatureType {
     INT = 0;
     FLOAT = 1;
-    STRING = 2;
-    BYTES = 3;
+    DOUBLE = 2;
+    STRING = 3;
+    // such as sentence
+    STRING_LIST = 4;
+    BYTES = 5;
     // fixed length array
-    DENSE = 4;
+    DENSE = 6;
     // varying length array
-    SPARSE = 5;
+    SPARSE = 7;
     // cross feature
-    CROSS = 6;
-    UNKNOWN_TYPE = 7;
+    CROSS = 8;
+    UNKNOWN_TYPE = 9;
   }
 
   optional FeatureType type = 1 [default = INT];
@@ -162,16 +189,17 @@ message Feature {
   optional string name = 2;
   optional Validator validator = 3;
   oneof value {
-    int64 int_value = 4;
+    uint64 int_value = 4;
     float float_value = 5;
     double double_value = 6;
     string string_value = 7;
-    bytes bytes_value = 8;
+    StringList string_list_value = 8;
+    bytes bytes_value = 10;
     // 用于一些embedding类的dense特征
-    DenseDomain dense_value = 9;
+    DenseDomain dense_value = 11;
     // 用于一些id类的sparse特征
-    SparseDomain sparse_value = 10;
-    CrossDomain cross_value = 11;
+    SparseDomain sparse_value = 12;
+    CrossDomain cross_value = 13;
   }
   // 可以进行多种转换处理。用repeated是因为转换之间可能有先后依赖关系，按加入
   // 的顺序来执行。

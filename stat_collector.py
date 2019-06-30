@@ -1,11 +1,13 @@
 from collections import defaultdict
 from collections import Counter
+from config import OOV_SYMBOL
 import numpy as np
 import feature_pb2 as feature
 
 
 class StatCollector:
     ''' collect stats '''
+    # TODO add missing_ratio collector
 
     def __init__(self):
         self.vocab = defaultdict(Counter)
@@ -40,8 +42,8 @@ class StatCollector:
             with open(savefile, 'w') as fout:
                 for w, c in vocab:
                     fout.write(f'{w}\t{c}\n')
-        word2idx = {}
-        for idx, (w, _) in enumerate(vocab):
+        word2idx = {OOV_SYMBOL: 0}
+        for idx, (w, _) in enumerate(vocab, start=1):
             word2idx[w] = idx
         return word2idx
 
@@ -55,7 +57,10 @@ class StatCollector:
         if feature_name not in self.value:
             raise KeyError(f'feature {feature_name} does not exist')
         values = np.asarray(self.value[feature_name])
-        return np.mean(values), np.std(values)
+        mean, std = np.mean(values), np.std(values)
+        self.mean[feature_name] = mean
+        self.std[feature_name] = std
+        return mean, std
 
     def build_bucket(self, feature_name, level=10,
                      method=feature.Discretize.QUANTILE):
@@ -86,8 +91,32 @@ class StatCollector:
             boundaries = np.linspace(min_value, max_value, level)
         elif method == feature.Discretize.QUANTILE:
             values = np.sort(values)
+            # print('sorted values', values)
             quantiles = np.linspace(0, 1, level)
             boundaries = []
             for q in quantiles:
                 boundaries.append(_get_score(q))
         return np.asarray(boundaries)
+
+def collect_stats(samples, schema, collector, needed_stats, transformers):
+    ''' collect needed stats and update corresponding transformers '''
+    for sample in samples:
+        for feat_name, feat_value in sample.feature.items():
+            if feat_name not in needed_stats:
+                continue
+            for stat in needed_stats[feat_name]:
+                if stat == 'bucket_info':
+                    collector.collect_value(feat_name, feat_value.float_value)
+                # TODO collect other stats
+    for feat_name in needed_stats:
+        for stat in needed_stats[feat_name]:
+            if stat == 'bucket_info':
+                trans = transformers[feat_name][stat]
+                boundaries = collector.build_bucket(
+                        feat_name,
+                        trans.discretize.discretize_level,
+                        trans.discretize.method)
+                trans.discretize.boundaries.extend(boundaries)
+            # TODO implement other stats calculations
+
+

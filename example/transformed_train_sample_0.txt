@@ -1,0 +1,37 @@
+feature {
+  key: "age"
+  value {
+    type: INT
+    int_value: 2
+  }
+}
+feature {
+  key: "fare"
+  value {
+    type: FLOAT
+    float_value: 7.25
+  }
+}
+feature {
+  key: "pclass"
+  value {
+    type: INT
+    int_value: 3
+  }
+}
+feature {
+  key: "pclass_X_sex"
+  value {
+    type: CROSS
+    cross_value {
+      list_value: 17291737249457318298
+    }
+  }
+}
+feature {
+  key: "sex"
+  value {
+    type: STRING
+    string_value: "male"
+  }
+}
