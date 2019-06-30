@@ -45,7 +45,7 @@ message Normalize {
 
 message HashToInteger {
   // string => 64 bit unsigned integer
-  // only used internally, no need to be explicitly used
+  // only used internally, no need to be explicitly used (is it?)
   enum HashFunction {
     MD5 = 0;
     MURMURHASH3 = 1;
@@ -87,9 +87,6 @@ message BuildVocabAndConvertToId {
 }
 
 message Transformer {
-  // transformation won't change original feature type. So if a type of feature
-  // is transformed into another type of feature, it should be added as a new
-  // feature
   oneof transform {
     Discretize discretize = 1;
     Normalize normalize = 2;
@@ -98,16 +95,6 @@ message Transformer {
     Clip clip = 5;
     BuildVocabAndConvertToId build_vocab_and_convert_to_id = 6;
   }
-
-  // sometimes transformation is applied only on dependency features, such as
-  // convert float feature to integer through discretization.
-  // TODO change type or create a new feature? prefer change type maybe
-  enum ApplyOn {
-    DEPENDENCY = 0;
-    SELF = 1;
-    BOTH_DEPENDENCY_AND_SELF = 2;
-  }
-  optional ApplyOn apply_on = 10 [ default = SELF ];
 }
 
 message Validator {
@@ -150,7 +137,7 @@ message StringList { repeated string value = 1; }
 message CrossDomain {
   enum CrossMethod {
     // 笛卡儿积, only accept INT/SPARSE/CROSS input, other type of features
-    // should first be hash to integers using the HashToInteger transformer.
+    // should first be hashed to integers using the HashToInteger transformer.
     CARTESIAN_PRODUCT = 0;
     // cosine相似度
     COSINE_SIMILARITY = 1;
@@ -242,6 +229,5 @@ message Schema {
 
 // Representation of a sample. We can iterate through features in a given
 // schema, and retrieve its value by feature name from feature map, and do
-// the validation.
-// XXX(xudonggong) compile with newer protoc (v3.5.1 is OK)
+// validation/transform.
 message Sample { map<string, Feature> feature = 1; }
