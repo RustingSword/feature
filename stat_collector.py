@@ -31,7 +31,7 @@ class StatCollector:
         for word in words:
             if complete_vocab[word] < minfreq:
                 del complete_vocab[word]
-            if word in stopwords:
+            if stopwords is not None and word in stopwords:
                 del complete_vocab[word]
 
         if limit > 0:
@@ -107,6 +107,17 @@ def collect_stats(samples, schema, collector, needed_stats, transformers):
             for stat in needed_stats[feat_name]:
                 if stat == 'bucket_info':
                     collector.collect_value(feat_name, feat_value.float_value)
+                elif stat == 'vocab':
+                    if feat_value.HasField('string_list_value'):
+                        collector.collect_vocab(
+                                feat_name,
+                                list(feat_value.string_list_value.value))
+                    elif feat_value.HasField('string_value'):
+                        collector.collect_vocab(feat_name,
+                                                feat_value.string_value)
+                    else:
+                        raise ValueError(f'no string_value/string_list_value in'
+                                         ' feature {feat_name}')
                 # TODO collect other stats
     for feat_name in needed_stats:
         for stat in needed_stats[feat_name]:
@@ -117,6 +128,13 @@ def collect_stats(samples, schema, collector, needed_stats, transformers):
                         trans.discretize.discretize_level,
                         trans.discretize.method)
                 trans.discretize.boundaries.extend(boundaries)
+            elif stat == 'vocab':
+                trans = transformers[feat_name][stat]
+                conf = trans.build_vocab_and_convert_to_id
+                collector.build_vocab(feat_name,
+                                      savefile=conf.vocab_file_name,
+                                      minfreq=conf.min_freq,
+                                      limit=conf.max_vocab_num)
             # TODO implement other stats calculations
 
 

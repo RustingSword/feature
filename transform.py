@@ -48,14 +48,16 @@ def discretize(feat, spec):
     # NOTE feature type changed to INT
     feat.type = feature.Feature.INT
 
-def build_vocab_and_convert_to_id(feat, word_to_index):
-    ''' build vocab and convert to id '''
+def convert_word_to_id(feat, word_to_index):
+    ''' convert string_value/string_list_value to id '''
     if feat.type == feature.Feature.STRING:
         feat.int_value = word_to_index.get(feat.string_value, 0)
         feat.type = feature.Feature.INT
     elif feat.type == feature.Feature.STRING_LIST:
-        feat.sparse_value.value = []  # clear
+        # del feat.sparse_value.value[:]
+        # print(feat)
         for word in feat.string_list_value.value:
+            # print('{} {}'.format(word, word_to_index.get(word, 0)))
             feat.sparse_value.value.append(word_to_index.get(word, 0))
         feat.type = feature.Feature.SPARSE
 
@@ -104,9 +106,12 @@ def apply_transformation(feat, trans):
     if trans.HasField('discretize'):
         discretize(feat, trans.discretize)
     if trans.HasField('build_vocab_and_convert_to_id'):
-        word_to_index = load_vocab(
-                            trans.build_vocab_and_convert_to_id.vocab_file_name)
-        build_vocab_and_convert_to_id(feat, word_to_index)
+        if trans.build_vocab_and_convert_to_id.HasField('init_vocab_file'):
+            vocab_file = trans.build_vocab_and_convert_to_id.init_vocab_file
+        else:
+            vocab_file = trans.build_vocab_and_convert_to_id.vocab_file_name
+        word_to_index = load_vocab(vocab_file)
+        convert_word_to_id(feat, word_to_index)
     if trans.HasField('hash_to_interval'):
         hash_to_interval(feat, trans.hash_to_interval)
     if trans.HasField('hash_to_integer'):  # XXX will not be used directly?
@@ -245,6 +250,10 @@ def transform(sample, schema):
     ''' transform
     first apply transformations on features, then add cross features
     '''
+    # TODO pass collector into this func, so for some transformations such as
+    # `build_vocab_and_convert_to_id`, we don't need to load vocab for every
+    # sample, instead we can keep the word_to_id mapping in
+    # collector.vocab[feat.name], and reuse it.
     for feat in schema.feature:
         feature_in_sample = sample.feature[feat.name]
         for trans in feat.transformer:
