@@ -154,16 +154,16 @@ def main():
     schema_demo = define_schema()
     if schema_demo.version < MINIMUM_SCHEMA_VERSION:
         raise RuntimeError(f'schema version {schema_demo.version} < required mininum schema version {MINIMUM_SCHEMA_VERSION}')
-    print(text_format.MessageToString(schema_demo, as_utf8=True))
     schema_analyzer = Analyzer(schema_demo)
     schema_analyzer.topo_sort()
+    print(text_format.MessageToString(schema_demo, as_utf8=True))
     print('features in topological order:',
           schema_analyzer.topo_sorted_feature)
     schema_analyzer.collect_needed_stats_type()
     print('statistics to be collected:', schema_analyzer.stats_to_collect)
     sample_demo = generate_feature()
     validate(sample_demo, schema_demo, feature.Validator.BEFORE_TRANSFORM)
-    transform(sample_demo, schema_demo)
+    transform(sample_demo, schema_demo, {})
     validate(sample_demo, schema_demo, feature.Validator.AFTER_TRANSFORM)
     print(sample_demo)
 
