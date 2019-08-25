@@ -13,16 +13,12 @@ class Analyzer:
     def __init__(self, schema):
         self.schema = schema
         self.features_in_topo_order = []
-        self.precursor = defaultdict(list)
-        self.successor = defaultdict(list)
-        self.feature_set = set()
-        self.temporary = set()
         self.needed_stats = defaultdict(set)
         self.transformers = defaultdict(dict)
 
     @property
     def topo_sorted_feature(self):
-        ''' topo '''
+        ''' feature names in topological order '''
         return self.features_in_topo_order
 
     @property
@@ -34,33 +30,41 @@ class Analyzer:
     def corresponding_transformers(self):
         return self.transformers
 
-    def visit(self, feat):
-        ''' helper function '''
-        if feat in self.features_in_topo_order:
-            return
-        if feat in self.temporary:
-            raise ValueError('cyclic dependency detected on feature %s' % feat)
-        self.temporary.add(feat)
-        for suc in self.successor[feat]:
-            self.visit(suc)
-        self.temporary.remove(feat)
-        self.features_in_topo_order.insert(0, feat)
-
     def topo_sort(self):
         ''' rearrange feature in topological order for transformation '''
+
+        precursor = defaultdict(list)
+        successor = defaultdict(list)
+        temporary = set()
+        feature_set = set()
+
+        def _visit(feat):
+            ''' helper function '''
+            if feat in self.features_in_topo_order:
+                return
+            if feat in temporary:
+                raise ValueError('cyclic dependency detected on feature %s' % feat)
+            temporary.add(feat)
+            for suc in successor[feat]:
+                _visit(suc)
+            temporary.remove(feat)
+            self.features_in_topo_order.insert(0, feat)
+
         for feat in self.schema.feature:
-            if feat.name in self.feature_set:
+            if feat.name in feature_set:
                 raise ValueError('detected duplicate feature name %s' %
                                  (feat.name))
-            self.feature_set.add(feat.name)
+            feature_set.add(feat.name)
             for dep in feat.dependency_feature:
-                self.successor[dep].append(feat.name)
-                self.precursor[feat.name].append(dep)
+                successor[dep].append(feat.name)
+                precursor[feat.name].append(dep)
 
         # topological sort by depth first search
-        while self.feature_set:
-            current_feature = self.feature_set.pop()
-            self.visit(current_feature)
+        while feature_set:
+            current_feature = feature_set.pop()
+            _visit(current_feature)
+
+        self.schema.topo_sorted_feature.extend(self.features_in_topo_order)
 
     def collect_stats_by_transforms(self, feat):
         ''' stats needed by transformers '''

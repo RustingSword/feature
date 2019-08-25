@@ -7,6 +7,7 @@ import csv
 import os
 os.environ['PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION'] = 'python'
 import numpy as np
+import random
 
 from google.protobuf import text_format
 
@@ -66,6 +67,7 @@ def define_schema():
                                      name='_X_'.join(features_to_cross))
     new_feature.dependency_feature.extend(features_to_cross)
     new_feature.desc = 'cross ucate and ncate'
+    new_feature.transformer.add(hash_to_interval=feature.HashToInterval(modulus=11))
 
     return schema
 
@@ -74,19 +76,21 @@ def load_samples():
     samples = []
     for i in range(100):
         age = feature.Feature(type=feature.Feature.FLOAT)
-        age.float_value = np.random.randint(20, 70)
+        age.float_value = np.round(np.random.uniform(20, 70), 2)
         gender = feature.Feature(type=feature.Feature.STRING)
-        gender.string_value = np.random.choice(['male', 'female'])
+        gender.string_value = random.choice(['male', 'female'])
         ucate = feature.Feature(type=feature.Feature.STRING_LIST)
-        ucate.string_list_value.value.extend(np.random.choice(valid_cates, 2)) # 2 user cates
+        ucate.string_list_value.value.extend(random.sample(valid_cates, 2)) # 2 user cates
         ncate = feature.Feature(type=feature.Feature.STRING_LIST)
-        ncate.string_list_value.value.extend(np.random.choice(valid_cates, 1))  # 1 news cates
+        ncate.string_list_value.value.extend(random.sample(valid_cates, 1))  # 1 news cates
         features = {'age': age, 'gender': gender, 'ucate': ucate, 'ncate': ncate}
         samples.append(feature.Sample(feature=features))
     return samples
 
 if __name__ == '__main__':
     schema = define_schema()
+    with open('original_newsschema.txt', 'w') as fout:
+        fout.write(text_format.MessageToString(schema, as_utf8=True))
     data = load_samples()
 
     schema_analyzer = Analyzer(schema)
@@ -109,7 +113,7 @@ if __name__ == '__main__':
     # validate/transform data
     for sample in data:
         validate(sample, schema, feature.Validator.BEFORE_TRANSFORM)
-        transform(sample, schema)
+        transform(sample, schema, collector.collected_stats)
         validate(sample, schema, feature.Validator.AFTER_TRANSFORM)
     with open('transformed_news_sample_0.txt', 'w') as fout:
         fout.write(text_format.MessageToString(data[0], as_utf8=True))

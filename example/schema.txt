@@ -45,3 +45,8 @@ feature {
   dependency_feature: "sex"
   desc: "cross sex and pclass"
 }
+topo_sorted_feature: "pclass"
+topo_sorted_feature: "age"
+topo_sorted_feature: "fare"
+topo_sorted_feature: "sex"
+topo_sorted_feature: "pclass_X_sex"

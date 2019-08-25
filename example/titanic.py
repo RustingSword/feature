@@ -97,6 +97,8 @@ def load_samples(filename):
 if __name__ == '__main__':
     # TODO simplify the whold process, it's still cumbersome right now
     schema = define_schema()
+    with open('original_schema.txt', 'w') as fout:
+        fout.write(text_format.MessageToString(schema, as_utf8=True))
     train_data = load_samples('train.csv')
     test_data = load_samples('test.csv')
 
@@ -118,7 +120,7 @@ if __name__ == '__main__':
     # validate/transform data
     for sample in train_data:
         validate(sample, schema, feature.Validator.BEFORE_TRANSFORM)
-        transform(sample, schema)
+        transform(sample, schema, collector.collected_stats)
         validate(sample, schema, feature.Validator.AFTER_TRANSFORM)
     with open('transformed_train_sample_0.txt', 'w') as fout:
         fout.write(text_format.MessageToString(train_data[0], as_utf8=True))

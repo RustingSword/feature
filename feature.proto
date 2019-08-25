@@ -225,6 +225,8 @@ message Schema {
   optional bool is_online_mode = 2 [ default = false ];
   // 特征列表，在schema里只需要定义基本属性，不需要对value赋值
   repeated Feature feature = 3;
+  // feature names in topological order
+  repeated string topo_sorted_feature = 4;
 }
 
 // Representation of a sample. We can iterate through features in a given

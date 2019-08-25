@@ -97,7 +97,7 @@ def load_vocab(vocab_file):
             word_to_index[word] = index
     return word_to_index
 
-def apply_transformation(feat, trans):
+def apply_transformation(feat, trans, stats):
     ''' apply transformations on features '''
     if trans.HasField('clip'):
         clip(feat, trans.clip)
@@ -106,12 +106,13 @@ def apply_transformation(feat, trans):
     if trans.HasField('discretize'):
         discretize(feat, trans.discretize)
     if trans.HasField('build_vocab_and_convert_to_id'):
-        if trans.build_vocab_and_convert_to_id.HasField('init_vocab_file'):
-            vocab_file = trans.build_vocab_and_convert_to_id.init_vocab_file
-        else:
-            vocab_file = trans.build_vocab_and_convert_to_id.vocab_file_name
-        word_to_index = load_vocab(vocab_file)
-        convert_word_to_id(feat, word_to_index)
+        if stats.get(feat.name, {}).get('word2idx') is None:
+            if trans.build_vocab_and_convert_to_id.HasField('init_vocab_file'):
+                vocab_file = trans.build_vocab_and_convert_to_id.init_vocab_file
+            else:
+                vocab_file = trans.build_vocab_and_convert_to_id.vocab_file_name
+            stats[feat.name]['word2idx'] = load_vocab(vocab_file)
+        convert_word_to_id(feat, stats[feat.name]['word2idx'])
     if trans.HasField('hash_to_interval'):
         hash_to_interval(feat, trans.hash_to_interval)
     if trans.HasField('hash_to_integer'):  # XXX will not be used directly?
@@ -246,18 +247,17 @@ def add_cross_feature(sample, feat, schema):
         new_feature.cross_value.point_value = crossed_value
     sample.feature[feat.name].CopyFrom(new_feature)
 
-def transform(sample, schema):
+def transform(sample, schema, stats):
     ''' transform
     first apply transformations on features, then add cross features
     '''
-    # TODO pass collector into this func, so for some transformations such as
-    # `build_vocab_and_convert_to_id`, we don't need to load vocab for every
-    # sample, instead we can keep the word_to_id mapping in
-    # collector.vocab[feat.name], and reuse it.
-    for feat in schema.feature:
-        feature_in_sample = sample.feature[feat.name]
-        for trans in feat.transformer:
-            apply_transformation(feature_in_sample, trans)
-    for feat in schema.feature:
+    # FIXME some heavy resources (such as vocab) are stored in stat_collector,
+    # while some light ones (discretization boundaries, validation rules etc.)
+    # are directly store in schema.  Should make it consistent.
+    for feat_name in schema.topo_sorted_feature:
+        feat = get_feature_by_name(feat_name, schema)
+        feature_in_sample = sample.feature[feat_name]
         if feat.type == feature.Feature.CROSS:
             add_cross_feature(sample, feat, schema)
+        for trans in feat.transformer:
+            apply_transformation(feature_in_sample, trans, stats)

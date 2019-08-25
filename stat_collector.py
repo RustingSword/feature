@@ -14,6 +14,7 @@ class StatCollector:
         self.mean = {}
         self.std = {}
         self.value = defaultdict(list)
+        self.collected_stats = defaultdict(dict)
 
     def collect_vocab(self, feature_name, words):
         if isinstance(words, list):
@@ -45,6 +46,7 @@ class StatCollector:
         word2idx = {OOV_SYMBOL: 0}
         for idx, (w, _) in enumerate(vocab, start=1):
             word2idx[w] = idx
+        self.collected_stats[feature_name]['word2idx'] = word2idx
         return word2idx
 
     def collect_value(self, feature_name, values):
